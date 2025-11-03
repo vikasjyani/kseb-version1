@@ -94,6 +94,8 @@ const ModelConfig = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [errors, setErrors] = useState({});
+  const [logs, setLogs] = useState("");
+  const [isRunning, setIsRunning] = useState(false);
 
 
   useEffect(() => {
@@ -228,6 +230,44 @@ const ModelConfig = () => {
     setErrors({});
   };
 
+  const handleRunModel = async () => {
+    setIsRunning(true);
+    setLogs("");
+    toast.success('Model run started! 🚀');
+
+    try {
+      await axios.post('http://localhost:8000/project/run-pypsa-model', { projectPath, scenarioName });
+
+      const eventSource = new EventSource('http://localhost:8000/project/pypsa-model-progress');
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'progress') {
+          setLogs(data.log);
+        } else if (data.type === 'end') {
+          setIsRunning(false);
+          eventSource.close();
+          if (data.status === 'completed') {
+            toast.success('Model run completed! 🎉');
+          } else {
+            toast.error(data.error || 'Model run failed.');
+          }
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('EventSource failed:', error);
+        toast.error('Failed to get real-time updates.');
+        eventSource.close();
+        setIsRunning(false);
+      };
+
+    } catch (error) {
+      setIsRunning(false);
+      toast.error(error.response?.data?.message || 'Failed to start model run.');
+    }
+  };
+
   return (
     <>
       <Toaster position="top-right" reverseOrder={false} />
@@ -358,6 +398,28 @@ const ModelConfig = () => {
             <SectionCard title="Advanced Options" subtitle="Costs and horizon modeling." icon={Sliders}>
               <FormField label="Battery Cycle Cost"><ToggleSwitch name="batteryCycleCost" value={formData.batteryCycleCost} onChange={handleChange} /></FormField>
               <FormField label="Rolling horizon" tooltip="Optimize the model in sequential, overlapping time windows."><ToggleSwitch name="rollingHorizon" value={formData.rollingHorizon} onChange={handleChange} /></FormField>
+            </SectionCard>
+
+            <SectionCard title="Model Execution" subtitle="Run the PyPSA model and view logs." icon={Zap}>
+              <div className="lg:col-span-3">
+                <button
+                  onClick={handleRunModel}
+                  disabled={isRunning || !scenarioName.trim() || !projectPath}
+                  className={`flex items-center justify-center gap-2 px-5 py-2.5 font-semibold rounded-lg transition-all duration-300 shadow-sm text-sm w-full text-center text-white
+                  ${isRunning ? 'bg-slate-400' : 'bg-green-600 hover:bg-green-700'}
+                  disabled:opacity-60 disabled:cursor-not-allowed`}
+                >
+                  {isRunning ? <><Loader2 className="w-5 h-5 animate-spin" />Running Model...</> : 'Run PyPSA Model'}
+                </button>
+              </div>
+              {logs && (
+                <div className="lg:col-span-3 bg-slate-100 p-4 rounded-lg max-h-96 overflow-y-auto">
+                  <h3 className="font-semibold text-slate-800 mb-2">Logs</h3>
+                  <pre className="space-y-2 text-xs font-mono whitespace-pre-wrap">
+                    {logs}
+                  </pre>
+                </div>
+              )}
             </SectionCard>
           </main>
 
