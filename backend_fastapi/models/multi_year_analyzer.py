@@ -24,6 +24,7 @@ import logging
 
 # Import network caching
 from network_cache import load_network_cached
+from .pypsa_comprehensive_analysis import PyPSASingleNetworkAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -106,21 +107,9 @@ class MultiYearPyPSAAnalyzer:
     def calculate_capacity_evolution(self) -> Dict[str, Any]:
         """
         Calculate capacity evolution across years.
-
-        Returns:
-            dict: {
-                'years': [2024, 2025, ...],
-                'total_capacity': {2024: {...by_carrier}, ...},
-                'new_capacity': {2025: {...additions_by_carrier}, ...},
-                'retired_capacity': {2025: {...retirements_by_carrier}, ...},
-                'net_change': {2025: {...net_by_carrier}, ...},
-                'cumulative_additions': {...},
-                'carriers': [...]
-            }
         """
         logger.info("Calculating capacity evolution")
 
-        # Ensure networks are loaded
         if not self.networks:
             self.load_all_networks()
 
@@ -137,25 +126,19 @@ class MultiYearPyPSAAnalyzer:
 
         for year in self.years:
             network = self.networks[year]
+            analyzer = PyPSASingleNetworkAnalyzer(network)
 
-            # Total capacity by carrier
+            # Using the single network analyzer to get capacities
+            capacities_data = analyzer.get_total_capacities()
+
             current_capacity = {}
-
-            if hasattr(network, 'generators') and not network.generators.empty:
-                gens = network.generators
-
-                # Group by carrier
-                for carrier in gens['carrier'].unique():
-                    carrier_gens = gens[gens['carrier'] == carrier]
-
-                    # Use p_nom_opt if available, else p_nom
-                    if 'p_nom_opt' in carrier_gens.columns:
-                        total = carrier_gens['p_nom_opt'].sum()
-                    else:
-                        total = carrier_gens['p_nom'].sum()
-
-                    current_capacity[carrier] = float(total)
-                    evolution['carriers'].add(carrier)
+            for component in ['generators', 'storage_units', 'stores']:
+                if component in capacities_data:
+                    for item in capacities_data[component]:
+                        tech = item['Technology']
+                        cap = item.get('Capacity_MW', item.get('Power_Capacity_MW', item.get('Energy_Capacity_MWh', 0)))
+                        current_capacity[tech] = current_capacity.get(tech, 0) + cap
+                        evolution['carriers'].add(tech)
 
             evolution['total_capacity'][year] = current_capacity
 
@@ -170,14 +153,12 @@ class MultiYearPyPSAAnalyzer:
                 for carrier in all_carriers:
                     current = current_capacity.get(carrier, 0)
                     previous = prev_capacity.get(carrier, 0)
-
                     diff = current - previous
-                    net_change[carrier] = float(diff)
-
+                    net_change[carrier] = diff
                     if diff > 0:
-                        new_capacity[carrier] = float(diff)
+                        new_capacity[carrier] = diff
                     elif diff < 0:
-                        retired_capacity[carrier] = float(abs(diff))
+                        retired_capacity[carrier] = abs(diff)
 
                 evolution['new_capacity'][year] = new_capacity
                 evolution['retired_capacity'][year] = retired_capacity
@@ -186,7 +167,6 @@ class MultiYearPyPSAAnalyzer:
             prev_capacity = current_capacity
 
         evolution['carriers'] = sorted(list(evolution['carriers']))
-
         logger.info(f"Capacity evolution calculated for {len(self.years)} years")
         return evolution
 
@@ -197,15 +177,6 @@ class MultiYearPyPSAAnalyzer:
     def calculate_energy_mix_evolution(self) -> Dict[str, Any]:
         """
         Calculate energy generation mix evolution.
-
-        Returns:
-            dict: {
-                'years': [...],
-                'energy_mix': {2024: {'solar': 1000, ...}, ...},
-                'energy_mix_percent': {2024: {'solar': 40%, ...}, ...},
-                'renewable_share': {2024: 75%, ...},
-                'total_generation': {2024: 50000, ...}
-            }
         """
         logger.info("Calculating energy mix evolution")
 
@@ -221,54 +192,33 @@ class MultiYearPyPSAAnalyzer:
             'carriers': set()
         }
 
-        renewable_carriers = {'solar', 'wind', 'hydro', 'biomass', 'geothermal'}
-
         for year in self.years:
             network = self.networks[year]
-            carrier_generation = {}
+            analyzer = PyPSASingleNetworkAnalyzer(network)
 
-            if (hasattr(network, 'generators_t') and
-                hasattr(network.generators_t, 'p') and
-                not network.generators_t.p.empty):
+            # Using the single network analyzer to get energy mix
+            mix_data = analyzer.get_energy_mix()
 
-                generation = network.generators_t.p
+            carrier_generation = {row['Carrier']: row['Energy_MWh'] for row in mix_data}
+            for carrier in carrier_generation.keys():
+                energy_mix_data['carriers'].add(carrier)
 
-                # Aggregate by carrier
-                for gen_name in generation.columns:
-                    if gen_name in network.generators.index:
-                        carrier = network.generators.loc[gen_name, 'carrier']
-                        total = generation[gen_name].sum()
+            energy_mix_data['energy_mix'][year] = carrier_generation
 
-                        carrier_generation[carrier] = carrier_generation.get(carrier, 0) + total
-                        energy_mix_data['carriers'].add(carrier)
-
-            # Store absolute values
-            energy_mix_data['energy_mix'][year] = {
-                k: float(v) for k, v in carrier_generation.items()
-            }
-
-            # Calculate total
             total = sum(carrier_generation.values())
-            energy_mix_data['total_generation'][year] = float(total)
+            energy_mix_data['total_generation'][year] = total
 
-            # Calculate percentages
             if total > 0:
-                energy_mix_data['energy_mix_percent'][year] = {
-                    k: float((v / total) * 100) for k, v in carrier_generation.items()
-                }
+                energy_mix_data['energy_mix_percent'][year] = {k: (v / total * 100) for k, v in carrier_generation.items()}
 
-                # Calculate renewable share
-                renewable_gen = sum(
-                    v for k, v in carrier_generation.items()
-                    if k.lower() in renewable_carriers
-                )
-                energy_mix_data['renewable_share'][year] = float((renewable_gen / total) * 100)
+                # Using the single network analyzer to get renewable share
+                renewable_data = analyzer.get_renewable_share()
+                energy_mix_data['renewable_share'][year] = renewable_data['renewable_share']
             else:
                 energy_mix_data['energy_mix_percent'][year] = {}
-                energy_mix_data['renewable_share'][year] = 0.0
+                energy_mix_data['renewable_share'][year] = 0
 
         energy_mix_data['carriers'] = sorted(list(energy_mix_data['carriers']))
-
         logger.info(f"Energy mix evolution calculated for {len(self.years)} years")
         return energy_mix_data
 
@@ -279,15 +229,6 @@ class MultiYearPyPSAAnalyzer:
     def calculate_cuf_evolution(self) -> Dict[str, Any]:
         """
         Calculate Capacity Utilization Factor evolution.
-
-        CUF = Actual Generation / (Installed Capacity × Hours)
-
-        Returns:
-            dict: {
-                'years': [...],
-                'cuf': {'solar': {2024: 0.18, 2025: 0.19, ...}, ...},
-                'average_cuf': {2024: 0.35, ...}
-            }
         """
         logger.info("Calculating CUF evolution")
 
@@ -303,50 +244,24 @@ class MultiYearPyPSAAnalyzer:
 
         for year in self.years:
             network = self.networks[year]
-            yearly_cuf = {}
+            analyzer = PyPSASingleNetworkAnalyzer(network)
 
-            if (hasattr(network, 'generators') and
-                hasattr(network, 'generators_t') and
-                hasattr(network.generators_t, 'p')):
+            # Using the single network analyzer to get capacity factors
+            cf_data = analyzer.get_capacity_factors()
 
-                for carrier in network.generators['carrier'].unique():
-                    carrier_gens = network.generators[network.generators['carrier'] == carrier]
-                    cuf_data['carriers'].add(carrier)
+            yearly_cuf = cf_data['by_carrier']
+            for carrier in yearly_cuf.keys():
+                cuf_data['carriers'].add(carrier)
 
-                    total_generation = 0
-                    total_capacity_hours = 0
-
-                    for gen_name in carrier_gens.index:
-                        if gen_name in network.generators_t.p.columns:
-                            generation = network.generators_t.p[gen_name].sum()
-
-                            # Get capacity
-                            if 'p_nom_opt' in carrier_gens.columns:
-                                capacity = carrier_gens.loc[gen_name, 'p_nom_opt']
-                            else:
-                                capacity = carrier_gens.loc[gen_name, 'p_nom']
-
-                            hours = len(network.snapshots)
-
-                            total_generation += generation
-                            total_capacity_hours += capacity * hours
-
-                    # Calculate CUF
-                    if total_capacity_hours > 0:
-                        yearly_cuf[carrier] = float(total_generation / total_capacity_hours)
-
-            # Store CUF by carrier
             for carrier, cuf in yearly_cuf.items():
                 if carrier not in cuf_data['cuf']:
                     cuf_data['cuf'][carrier] = {}
-                cuf_data['cuf'][carrier][year] = cuf
+                cuf_data['cuf'][carrier][year] = cuf * 100 # Convert to percentage
 
-            # Calculate average CUF
             if yearly_cuf:
-                cuf_data['average_cuf'][year] = float(np.mean(list(yearly_cuf.values())))
+                cuf_data['average_cuf'][year] = np.mean(list(yearly_cuf.values())) * 100
 
         cuf_data['carriers'] = sorted(list(cuf_data['carriers']))
-
         logger.info(f"CUF evolution calculated for {len(self.years)} years")
         return cuf_data
 
@@ -357,14 +272,6 @@ class MultiYearPyPSAAnalyzer:
     def calculate_emissions_evolution(self) -> Dict[str, Any]:
         """
         Calculate CO2 emissions evolution.
-
-        Returns:
-            dict: {
-                'years': [...],
-                'total_emissions': {2024: 50000, ...},
-                'emissions_by_carrier': {2024: {'gas': 30000, ...}, ...},
-                'carbon_intensity': {2024: 0.5, ...}  # tCO2/MWh
-            }
         """
         logger.info("Calculating emissions evolution")
 
@@ -380,42 +287,16 @@ class MultiYearPyPSAAnalyzer:
 
         for year in self.years:
             network = self.networks[year]
-            carrier_emissions = {}
-            total_emissions = 0
+            analyzer = PyPSASingleNetworkAnalyzer(network)
 
-            if (hasattr(network, 'generators') and
-                hasattr(network, 'generators_t') and
-                hasattr(network.generators_t, 'p')):
+            # Using the single network analyzer to get emissions data
+            emissions = analyzer.get_emissions_tracking()
 
-                # Get carrier CO2 emissions factors
-                co2_factors = {}
-                if hasattr(network, 'carriers') and 'co2_emissions' in network.carriers.columns:
-                    co2_factors = network.carriers['co2_emissions'].to_dict()
+            emissions_data['total_emissions'][year] = emissions['total_emissions']
+            emissions_data['carbon_intensity'][year] = emissions['emission_intensity']
 
-                # Calculate emissions
-                for gen_name in network.generators_t.p.columns:
-                    if gen_name in network.generators.index:
-                        carrier = network.generators.loc[gen_name, 'carrier']
-                        generation = network.generators_t.p[gen_name].sum()
-
-                        # Get CO2 factor (default to 0 for renewables)
-                        co2_factor = co2_factors.get(carrier, 0)
-
-                        emissions = generation * co2_factor
-                        carrier_emissions[carrier] = carrier_emissions.get(carrier, 0) + emissions
-                        total_emissions += emissions
-
-            emissions_data['emissions_by_carrier'][year] = {
-                k: float(v) for k, v in carrier_emissions.items()
-            }
-            emissions_data['total_emissions'][year] = float(total_emissions)
-
-            # Calculate carbon intensity
-            if (hasattr(network, 'generators_t') and
-                hasattr(network.generators_t, 'p')):
-                total_gen = network.generators_t.p.sum().sum()
-                if total_gen > 0:
-                    emissions_data['carbon_intensity'][year] = float(total_emissions / total_gen)
+            emissions_by_carrier = {row['carrier']: row['emissions'] for row in emissions['by_carrier']}
+            emissions_data['emissions_by_carrier'][year] = emissions_by_carrier
 
         logger.info(f"Emissions evolution calculated for {len(self.years)} years")
         return emissions_data
@@ -427,16 +308,6 @@ class MultiYearPyPSAAnalyzer:
     def calculate_storage_evolution(self) -> Dict[str, Any]:
         """
         Calculate storage capacity and operation evolution.
-
-        Returns:
-            dict: {
-                'years': [...],
-                'battery_capacity_mw': {2024: 500, ...},
-                'battery_capacity_mwh': {2024: 2000, ...},
-                'pumped_hydro_capacity': {...},
-                'max_hours': {2024: 4.0, ...},
-                'total_storage_energy': {...}
-            }
         """
         logger.info("Calculating storage evolution")
 
@@ -454,46 +325,32 @@ class MultiYearPyPSAAnalyzer:
 
         for year in self.years:
             network = self.networks[year]
+            analyzer = PyPSASingleNetworkAnalyzer(network)
+
+            # Get data from both storage_units and stores
+            su_data = analyzer.get_storage_units()
+            s_data = analyzer.get_stores()
 
             battery_mw = 0
-            battery_mwh = 0
+            battery_mwh = s_data['total_energy_capacity']
             hydro_mw = 0
 
-            # Storage Units (PHS, CAES - MW-based)
-            if hasattr(network, 'storage_units') and not network.storage_units.empty:
-                storage = network.storage_units
+            for su in su_data['storage_units']:
+                carrier = su.get('carrier', '')
+                p_nom = su.get('p_nom_opt', su.get('p_nom', 0))
+                if 'hydro' in carrier.lower() or 'phs' in carrier.lower():
+                    hydro_mw += p_nom
+                else:
+                    battery_mw += p_nom
+                battery_mwh += p_nom * su.get('max_hours', 0)
 
-                for idx, row in storage.iterrows():
-                    # Get capacity
-                    p_nom = row.get('p_nom_opt', row.get('p_nom', 0))
+            storage_data['battery_capacity_mw'][year] = battery_mw
+            storage_data['battery_capacity_mwh'][year] = battery_mwh
+            storage_data['pumped_hydro_capacity_mw'][year] = hydro_mw
+            storage_data['total_storage_energy'][year] = battery_mwh
 
-                    # Classify storage type
-                    carrier = row.get('carrier', '')
-                    if 'hydro' in carrier.lower() or 'phs' in carrier.lower():
-                        hydro_mw += p_nom
-                    else:
-                        battery_mw += p_nom
-
-                    # Get energy capacity
-                    max_hours_val = row.get('max_hours', 0)
-                    battery_mwh += p_nom * max_hours_val
-
-            # Stores (Batteries, H2 - MWh-based)
-            if hasattr(network, 'stores') and not network.stores.empty:
-                stores = network.stores
-
-                for idx, row in stores.iterrows():
-                    e_nom = row.get('e_nom_opt', row.get('e_nom', 0))
-                    battery_mwh += e_nom
-
-            storage_data['battery_capacity_mw'][year] = float(battery_mw)
-            storage_data['battery_capacity_mwh'][year] = float(battery_mwh)
-            storage_data['pumped_hydro_capacity_mw'][year] = float(hydro_mw)
-            storage_data['total_storage_energy'][year] = float(battery_mwh)
-
-            # Calculate average max hours
             if battery_mw > 0:
-                storage_data['max_hours'][year] = float(battery_mwh / battery_mw)
+                storage_data['max_hours'][year] = battery_mwh / battery_mw
 
         logger.info(f"Storage evolution calculated for {len(self.years)} years")
         return storage_data
@@ -505,15 +362,6 @@ class MultiYearPyPSAAnalyzer:
     def calculate_cost_evolution(self) -> Dict[str, Any]:
         """
         Calculate system cost evolution.
-
-        Returns:
-            dict: {
-                'years': [...],
-                'total_cost': {2024: 50000000, ...},
-                'capex': {...},
-                'opex': {...},
-                'cost_by_carrier': {...}
-            }
         """
         logger.info("Calculating cost evolution")
 
@@ -530,43 +378,20 @@ class MultiYearPyPSAAnalyzer:
 
         for year in self.years:
             network = self.networks[year]
-            total_cost = 0
-            capex = 0
-            opex = 0
-            carrier_costs = {}
+            analyzer = PyPSASingleNetworkAnalyzer(network)
 
-            # Calculate costs from generators
-            if hasattr(network, 'generators') and not network.generators.empty:
-                gens = network.generators
+            # Using the single network analyzer to get system costs
+            costs = analyzer.get_system_costs()
 
-                for idx, gen in gens.iterrows():
-                    carrier = gen.get('carrier', 'unknown')
+            cost_data['total_cost'][year] = costs['total_cost']
+            cost_data['capex'][year] = costs['capex_total']
+            cost_data['opex'][year] = costs['opex_total']
 
-                    # Capital costs
-                    if 'capital_cost' in gen.index and 'p_nom_opt' in gen.index:
-                        gen_capex = gen['capital_cost'] * gen['p_nom_opt']
-                        capex += gen_capex
-                        carrier_costs[carrier] = carrier_costs.get(carrier, 0) + gen_capex
-
-                    # Operational costs
-                    if 'marginal_cost' in gen.index:
-                        if (hasattr(network, 'generators_t') and
-                            hasattr(network.generators_t, 'p') and
-                            idx in network.generators_t.p.columns):
-
-                            generation = network.generators_t.p[idx].sum()
-                            gen_opex = gen['marginal_cost'] * generation
-                            opex += gen_opex
-                            carrier_costs[carrier] = carrier_costs.get(carrier, 0) + gen_opex
-
-            total_cost = capex + opex
-
-            cost_data['total_cost'][year] = float(total_cost)
-            cost_data['capex'][year] = float(capex)
-            cost_data['opex'][year] = float(opex)
-            cost_data['cost_by_carrier'][year] = {
-                k: float(v) for k, v in carrier_costs.items()
-            }
+            cost_by_carrier = {}
+            for item in costs['by_component']:
+                carrier = item['carrier']
+                cost_by_carrier[carrier] = cost_by_carrier.get(carrier, 0) + item['total']
+            cost_data['cost_by_carrier'][year] = cost_by_carrier
 
         logger.info(f"Cost evolution calculated for {len(self.years)} years")
         return cost_data
