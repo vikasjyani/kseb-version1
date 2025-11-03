@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Maximize2, Minimize2, Download, RefreshCw, AlertCircle } from 'lucide-react';
+import DispatchChart from '../charts/DispatchChart';
 
-const PlotViewer = ({ plotHtml, plotType, loading, error, onRefresh }) => {
+const PlotViewer = ({ plotHtml, plotData, plotType, loading, error, onRefresh, availability, filters }) => {
   const iframeRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [iframeHeight, setIframeHeight] = useState(700);
@@ -132,14 +133,18 @@ const PlotViewer = ({ plotHtml, plotType, loading, error, onRefresh }) => {
 
       {/* Plot Content */}
       <div className="flex-1 overflow-auto bg-white">
-        <iframe
-          ref={iframeRef}
-          srcDoc={plotHtml}
-          className="w-full border-0"
-          style={{ height: isFullscreen ? '100%' : `${iframeHeight}px` }}
-          title="PyPSA Visualization"
-          sandbox="allow-scripts allow-same-origin"
-        />
+        {plotType === 'dispatch' && plotData ? (
+          <DispatchChart data={plotData} availability={availability} filters={filters} />
+        ) : (
+          <iframe
+            ref={iframeRef}
+            srcDoc={plotHtml}
+            className="w-full border-0"
+            style={{ height: isFullscreen ? '100%' : `${iframeHeight}px` }}
+            title="PyPSA Visualization"
+            sandbox="allow-scripts allow-same-origin"
+          />
+        )}
       </div>
 
       {/* Info Footer */}

@@ -276,6 +276,59 @@ const PlotFilters = ({
             </div>
           )}
 
+          {/* Dispatch Plot Specific Filters */}
+          {plotType === 'dispatch' && (
+            <div className="border-t border-slate-200 pt-4 mt-4">
+              <h4 className="font-semibold text-slate-800 mb-2">Dispatch Filters</h4>
+              <div className="space-y-4">
+                {/* Time Range Zoom */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Zoom Level
+                  </label>
+                  <select
+                    value={localFilters.zoomLevel || 'all'}
+                    onChange={(e) => handleFilterChange('zoomLevel', e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="day">1 Day</option>
+                    <option value="week">1 Week</option>
+                    <option value="month">1 Month</option>
+                    <option value="all">All Data</option>
+                  </select>
+                </div>
+
+                {/* Display Toggles */}
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={localFilters.showGeneration !== false}
+                      onChange={(e) => handleFilterChange('showGeneration', e.target.checked)}
+                    />
+                    <span className="text-sm">Generation</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={localFilters.showStorage !== false}
+                      onChange={(e) => handleFilterChange('showStorage', e.target.checked)}
+                    />
+                    <span className="text-sm">Storage</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={localFilters.showLoad !== false}
+                      onChange={(e) => handleFilterChange('showLoad', e.target.checked)}
+                    />
+                    <span className="text-sm">Load</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Generate Button */}
           <div className="pt-2">
             <button
