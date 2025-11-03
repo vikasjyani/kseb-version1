@@ -39,7 +39,8 @@ from routers import (
     pypsa_routes,
     pypsa_comprehensive_routes,
     pypsa_plot_routes,
-    pypsa_multi_period_routes
+    pypsa_multi_period_routes,
+    pypsa_model_routes
 )
 
 # Configure logging
@@ -104,6 +105,7 @@ app.include_router(pypsa_routes.router, prefix="/project", tags=["PyPSA Optimiza
 app.include_router(pypsa_comprehensive_routes.router, prefix="/project", tags=["PyPSA Comprehensive Analysis"])
 app.include_router(pypsa_plot_routes.router, prefix="/project", tags=["PyPSA Visualizations"])
 app.include_router(pypsa_multi_period_routes.router, prefix="/project", tags=["PyPSA Multi-Period"])
+app.include_router(pypsa_model_routes.router, prefix="/project", tags=["PyPSA Model"])
 
 
 @app.get("/", tags=["Root"])
