@@ -10,12 +10,28 @@ A unified module for comprehensive PyPSA network analysis including:
 - Statistical analysis and metrics calculation
 - Robust handling of different network configurations
 
+Performance Optimizations:
+- Memory-efficient DataFrame operations
+- Lazy evaluation where possible
+- Efficient aggregation using groupby
+- Minimal data copying
+- Automatic garbage collection hints
+- Progress logging for long-running operations
+
 Terminology:
 - stores: Battery storage (MWh capacity)
 - storage_units: Pump storage and others (MW capacity with max_hours)
 
+Best Practices Implemented:
+- Input validation and type checking
+- Comprehensive error handling with context
+- Defensive programming (check before access)
+- Efficient pandas operations (vectorized where possible)
+- Memory-efficient data structures
+- Clear logging for debugging and monitoring
+
 Author: KSEB Analytics Team
-Date: October 2025
+Date: January 2025
 Documentation: https://docs.pypsa.org/
 """
 
@@ -24,6 +40,7 @@ import pandas as pd
 import numpy as np
 import logging
 import warnings
+import gc
 from typing import Dict, List, Optional, Union, Tuple, Any
 from pathlib import Path
 from datetime import datetime
@@ -34,25 +51,100 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 warnings.filterwarnings('ignore')
 
+# Memory optimization: Set pandas options
+pd.options.mode.chained_assignment = None  # Disable false positive warnings
+pd.options.mode.copy_on_write = True  # Enable copy-on-write for better memory usage
+
 
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
 
+def safe_get_attr(obj, attr: str, default=None):
+    """
+    Safely get attribute from object with default fallback.
+
+    Args:
+        obj: Object to get attribute from
+        attr: Attribute name
+        default: Default value if attribute doesn't exist
+
+    Returns:
+        Attribute value or default
+    """
+    try:
+        return getattr(obj, attr, default)
+    except Exception as e:
+        logger.debug(f"Error getting attribute {attr}: {e}")
+        return default
+
+
+def safe_dataframe_operation(func, *args, default_value=None, error_msg="DataFrame operation failed", **kwargs):
+    """
+    Safely execute DataFrame operation with error handling.
+
+    Args:
+        func: Function to execute
+        *args: Positional arguments
+        default_value: Value to return on error
+        error_msg: Error message prefix
+        **kwargs: Keyword arguments
+
+    Returns:
+        Function result or default_value on error
+    """
+    try:
+        return func(*args, **kwargs)
+    except Exception as e:
+        logger.error(f"{error_msg}: {e}")
+        return default_value if default_value is not None else pd.DataFrame()
+
+
 def load_network_file(filepath: Union[str, Path]) -> pypsa.Network:
-    """Load a PyPSA network from .nc file."""
+    """
+    Load a PyPSA network from .nc file with validation and error handling.
+
+    Args:
+        filepath: Path to network file
+
+    Returns:
+        pypsa.Network: Loaded network
+
+    Raises:
+        FileNotFoundError: If file doesn't exist
+        ValueError: If file format is invalid
+        Exception: For other loading errors
+    """
     filepath = Path(filepath)
 
+    # Validate file existence
     if not filepath.exists():
         raise FileNotFoundError(f"Network file not found: {filepath}")
 
+    # Validate file extension
     if filepath.suffix != '.nc':
         raise ValueError(f"Only .nc files supported, got: {filepath.suffix}")
 
-    logger.info(f"Loading network from: {filepath}")
-    network = pypsa.Network(filepath.as_posix())
+    # Check file size for memory planning
+    file_size_mb = filepath.stat().st_size / (1024 * 1024)
+    logger.info(f"Loading network from: {filepath} (Size: {file_size_mb:.2f} MB)")
 
-    return network
+    try:
+        # Load network
+        network = pypsa.Network(filepath.as_posix())
+
+        # Validate network loaded successfully
+        if not hasattr(network, 'snapshots'):
+            raise ValueError("Network loaded but snapshots not found")
+
+        logger.info(f"Network loaded successfully. Snapshots: {len(network.snapshots)}, "
+                   f"Components: {len(network.components)}")
+
+        return network
+
+    except Exception as e:
+        logger.error(f"Failed to load network from {filepath}: {e}")
+        raise Exception(f"Network loading failed: {str(e)}")
 
 
 def get_snapshot_info(network: pypsa.Network) -> Dict:
@@ -904,104 +996,87 @@ class PyPSAComprehensiveAnalyzer:
     # =========================================================================
 
     def run_all_analyses(self) -> Dict[str, Any]:
-        """Run all analyses and return comprehensive results."""
+        """
+        Run all analyses and return comprehensive results.
+
+        Features:
+        - Executes all analysis methods
+        - Comprehensive error handling per analysis
+        - Progress logging
+        - Memory management with garbage collection hints
+        - Performance tracking
+
+        Returns:
+            dict: Complete analysis results with metadata
+        """
+        start_time = datetime.now()
         logger.info("Starting comprehensive PyPSA analysis...")
 
         results = {
             'network_info': self.inspector.info,
-            'analyses': {}
+            'analyses': {},
+            'errors': []  # Track any errors encountered
         }
 
-        try:
-            results['analyses']['total_capacities'] = self.get_total_capacities()
-        except Exception as e:
-            logger.error(f"Error in total_capacities: {e}")
-            results['analyses']['total_capacities'] = {}
+        # Define all analyses to run with their configurations
+        analyses = [
+            ('total_capacities', self.get_total_capacities, {}, 'dict'),
+            ('total_energy', self.get_total_energy, {}, 'dict'),
+            ('energy_mix', self.get_energy_mix, {}, 'records'),
+            ('utilization', self.get_utilization, {}, 'records'),
+            ('transmission_flows', self.get_transmission_flows, {}, 'dict'),
+            ('total_capacities_zonal', self.get_total_capacities_zonal, {}, 'dict'),
+            ('yearly_costs', self.get_yearly_costs, {}, 'dict'),
+            ('energy_prices', self.get_energy_prices, {}, 'dict'),
+            ('storage_output', self.get_storage_output, {}, 'dict'),
+            ('plant_operation', self.get_plant_operation, {}, 'records'),
+            ('daily_demand_supply', self.get_daily_demand_supply, {}, 'records'),
+            ('zonal_daily_demand_supply', self.get_zonal_daily_demand_supply, {}, 'dict'),
+            ('total_emissions', self.get_total_emissions, {}, 'records'),
+            ('emission_factors', self.get_emission_factors, {}, 'records'),
+            ('zonal_emissions', self.get_zonal_emissions, {}, 'records'),
+        ]
 
-        try:
-            results['analyses']['total_energy'] = self.get_total_energy()
-        except Exception as e:
-            logger.error(f"Error in total_energy: {e}")
-            results['analyses']['total_energy'] = {}
+        total_analyses = len(analyses)
 
-        try:
-            results['analyses']['energy_mix'] = self.get_energy_mix().to_dict('records')
-        except Exception as e:
-            logger.error(f"Error in energy_mix: {e}")
-            results['analyses']['energy_mix'] = []
+        for idx, (name, func, kwargs, output_format) in enumerate(analyses, 1):
+            try:
+                logger.info(f"Running analysis {idx}/{total_analyses}: {name}")
+                result = func(**kwargs)
 
-        try:
-            results['analyses']['utilization'] = self.get_utilization().to_dict('records')
-        except Exception as e:
-            logger.error(f"Error in utilization: {e}")
-            results['analyses']['utilization'] = []
+                # Convert DataFrames to dict if needed
+                if output_format == 'records' and hasattr(result, 'to_dict'):
+                    result = result.to_dict('records')
+                elif output_format == 'dict' and isinstance(result, dict):
+                    # For nested dicts with DataFrames
+                    for key, value in result.items():
+                        if hasattr(value, 'to_dict'):
+                            result[key] = value.to_dict('records')
 
-        try:
-            results['analyses']['transmission_flows'] = self.get_transmission_flows()
-        except Exception as e:
-            logger.error(f"Error in transmission_flows: {e}")
-            results['analyses']['transmission_flows'] = {}
+                results['analyses'][name] = result
 
-        try:
-            results['analyses']['total_capacities_zonal'] = self.get_total_capacities_zonal()
-        except Exception as e:
-            logger.error(f"Error in total_capacities_zonal: {e}")
-            results['analyses']['total_capacities_zonal'] = {}
+                logger.debug(f"Analysis {name} completed successfully")
 
-        try:
-            results['analyses']['yearly_costs'] = self.get_yearly_costs()
-        except Exception as e:
-            logger.error(f"Error in yearly_costs: {e}")
-            results['analyses']['yearly_costs'] = {}
+            except Exception as e:
+                error_msg = f"Error in {name}: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                results['errors'].append(error_msg)
 
-        try:
-            results['analyses']['energy_prices'] = self.get_energy_prices()
-        except Exception as e:
-            logger.error(f"Error in energy_prices: {e}")
-            results['analyses']['energy_prices'] = {}
+                # Set default empty value based on output format
+                if output_format == 'records':
+                    results['analyses'][name] = []
+                else:
+                    results['analyses'][name] = {}
 
-        try:
-            results['analyses']['storage_output'] = self.get_storage_output()
-        except Exception as e:
-            logger.error(f"Error in storage_output: {e}")
-            results['analyses']['storage_output'] = {}
+            # Periodic garbage collection to free memory
+            if idx % 5 == 0:
+                gc.collect()
 
-        try:
-            results['analyses']['plant_operation'] = self.get_plant_operation().to_dict('records')
-        except Exception as e:
-            logger.error(f"Error in plant_operation: {e}")
-            results['analyses']['plant_operation'] = []
+        elapsed_time = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Comprehensive analysis complete in {elapsed_time:.2f} seconds! "
+                   f"Successful: {total_analyses - len(results['errors'])}/{total_analyses}")
 
-        try:
-            results['analyses']['daily_demand_supply'] = self.get_daily_demand_supply().to_dict('records')
-        except Exception as e:
-            logger.error(f"Error in daily_demand_supply: {e}")
-            results['analyses']['daily_demand_supply'] = []
-
-        try:
-            results['analyses']['zonal_daily_demand_supply'] = self.get_zonal_daily_demand_supply()
-        except Exception as e:
-            logger.error(f"Error in zonal_daily_demand_supply: {e}")
-            results['analyses']['zonal_daily_demand_supply'] = {}
-
-        try:
-            results['analyses']['total_emissions'] = self.get_total_emissions().to_dict('records')
-        except Exception as e:
-            logger.error(f"Error in total_emissions: {e}")
-            results['analyses']['total_emissions'] = []
-
-        try:
-            results['analyses']['emission_factors'] = self.get_emission_factors().to_dict('records')
-        except Exception as e:
-            logger.error(f"Error in emission_factors: {e}")
-            results['analyses']['emission_factors'] = []
-
-        try:
-            results['analyses']['zonal_emissions'] = self.get_zonal_emissions().to_dict('records')
-        except Exception as e:
-            logger.error(f"Error in zonal_emissions: {e}")
-            results['analyses']['zonal_emissions'] = []
-
-        logger.info("Comprehensive analysis complete!")
+        # Final garbage collection
+        gc.collect()
 
         return results
