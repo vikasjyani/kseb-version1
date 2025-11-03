@@ -33,515 +33,152 @@ import EnergyMixChart from '../../components/pypsa/EnergyMixChart';
 import UtilizationChart from '../../components/pypsa/UtilizationChart';
 import CostBreakdownChart from '../../components/pypsa/CostBreakdownChart';
 import EmissionsChart from '../../components/pypsa/EmissionsChart';
+import ChartCard from '../../components/common/ChartCard';
 
-/**
- * Network data categories with their respective API endpoints and expected data structures
- */
 const networkDataCategories = [
     {
         id: 'overview',
         label: 'Network Overview',
         icon: Layers,
         color: 'blue',
+        api: '/pypsa/overview',
         description: 'Key metrics and summary',
-        // API: GET /pypsa/overview
-        // Expected Response: {
-        //   success: true,
-        //   network_name: string,
-        //   num_buses: number,
-        //   num_generators: number,
-        //   num_loads: number,
-        //   num_storage_units: number,
-        //   num_stores: number,
-        //   num_lines: number,
-        //   num_links: number,
-        //   total_capacity_mw: number,
-        //   total_generation_mwh: number,
-        //   peak_load_mw: number
-        // }
     },
     {
         id: 'buses',
         label: 'Buses',
         icon: MapPin,
         color: 'purple',
+        api: '/pypsa/buses',
         description: 'Voltage levels & nodal prices',
-        // API: GET /pypsa/buses
-        // Expected Response: {
-        //   success: true,
-        //   buses: [
-        //     {
-        //       bus_name: string,
-        //       voltage_level: number,  // kV
-        //       zone: string,
-        //       carrier: string,
-        //       x_coord: number,
-        //       y_coord: number,
-        //       marginal_price: number,  // EUR/MWh per timestep
-        //       avg_price: number  // EUR/MWh
-        //     }
-        //   ],
-        //   voltage_levels: [110, 220, 380],  // Unique voltage levels
-        //   zones: ['north', 'south', 'east', 'west'],
-        //   price_statistics: {
-        //     min: number,
-        //     max: number,
-        //     avg: number,
-        //     std: number
-        //   }
-        // }
     },
     {
         id: 'carriers',
         label: 'Carriers',
         icon: Zap,
         color: 'yellow',
+        api: '/pypsa/carriers',
         description: 'Energy carriers & emissions',
-        // API: GET /pypsa/carriers
-        // Expected Response: {
-        //   success: true,
-        //   carriers: [
-        //     {
-        //       carrier_name: string,
-        //       co2_emissions: number,  // t/MWh
-        //       color: string,  // Hex color code
-        //       nice_name: string,
-        //       total_capacity: number,  // MW
-        //       total_generation: number,  // MWh
-        //       share_percentage: number,  // %
-        //       num_generators: number
-        //     }
-        //   ],
-        //   total_emissions: number,  // tCO2
-        //   emission_intensity: number  // tCO2/MWh
-        // }
     },
     {
         id: 'generators',
         label: 'Generators',
         icon: Wind,
         color: 'green',
+        api: '/pypsa/generators',
         description: 'Capacity, generation & efficiency',
-        // API: GET /pypsa/generators
-        // Expected Response: {
-        //   success: true,
-        //   generators: [
-        //     {
-        //       generator_name: string,
-        //       bus: string,
-        //       carrier: string,
-        //       p_nom: number,  // Nominal capacity (MW)
-        //       p_nom_opt: number,  // Optimized capacity (MW)
-        //       p_nom_extendable: boolean,
-        //       capital_cost: number,  // EUR/MW
-        //       marginal_cost: number,  // EUR/MWh
-        //       efficiency: number,  // %
-        //       total_generation: number,  // MWh
-        //       capacity_factor: number,  // %
-        //       curtailment: number,  // MWh
-        //       revenue: number,  // EUR
-        //       opex: number,  // EUR
-        //       capex: number  // EUR
-        //     }
-        //   ],
-        //   by_carrier: {
-        //     [carrier: string]: {
-        //       total_capacity: number,
-        //       total_generation: number,
-        //       avg_capacity_factor: number
-        //     }
-        //   }
-        // }
     },
     {
         id: 'loads',
         label: 'Loads',
         icon: Building2,
         color: 'orange',
+        api: '/pypsa/loads',
         description: 'Demand profiles & analysis',
-        // API: GET /pypsa/loads
-        // Expected Response: {
-        //   success: true,
-        //   loads: [
-        //     {
-        //       load_name: string,
-        //       bus: string,
-        //       carrier: string,
-        //       total_demand: number,  // MWh
-        //       peak_demand: number,  // MW
-        //       avg_demand: number,  // MW
-        //       load_factor: number,  // %
-        //       time_series: [
-        //         {
-        //           timestamp: string,
-        //           power_mw: number
-        //         }
-        //       ]
-        //     }
-        //   ],
-        //   total_demand: number,  // MWh
-        //   peak_demand: number,  // MW
-        //   load_duration_curve: [
-        //     {
-        //       hour: number,
-        //       demand_mw: number
-        //     }
-        //   ],
-        //   demand_by_carrier: {
-        //     [carrier: string]: number  // MWh
-        //   }
-        // }
     },
     {
         id: 'storage-units',
         label: 'Storage Units (PHS)',
         icon: Battery,
         color: 'cyan',
+        api: '/pypsa/storage-units',
         description: 'Power-based storage (MW)',
-        // API: GET /pypsa/storage-units
-        // Expected Response: {
-        //   success: true,
-        //   storage_units: [
-        //     {
-        //       storage_unit_name: string,
-        //       bus: string,
-        //       carrier: string,
-        //       p_nom: number,  // Power capacity (MW)
-        //       p_nom_opt: number,  // Optimized power (MW)
-        //       max_hours: number,  // Energy/Power ratio (hours)
-        //       efficiency_dispatch: number,  // %
-        //       efficiency_store: number,  // %
-        //       cyclic_state_of_charge: boolean,
-        //       state_of_charge_initial: number,  // MWh
-        //       capital_cost: number,  // EUR/MW
-        //       dispatch_total: number,  // MWh dispatched
-        //       store_total: number,  // MWh stored
-        //       cycles: number,
-        //       revenue: number  // EUR
-        //     }
-        //   ],
-        //   total_power_capacity: number,  // MW
-        //   total_energy_capacity: number,  // MWh
-        //   avg_efficiency: number  // %
-        // }
     },
     {
         id: 'stores',
         label: 'Stores (Batteries)',
         icon: BatteryCharging,
         color: 'emerald',
+        api: '/pypsa/stores',
         description: 'Energy-based storage (MWh)',
-        // API: GET /pypsa/stores
-        // Expected Response: {
-        //   success: true,
-        //   stores: [
-        //     {
-        //       store_name: string,
-        //       bus: string,
-        //       carrier: string,
-        //       e_nom: number,  // Energy capacity (MWh)
-        //       e_nom_opt: number,  // Optimized energy (MWh)
-        //       e_cyclic: boolean,
-        //       e_initial: number,  // MWh
-        //       capital_cost: number,  // EUR/MWh
-        //       standing_loss: number,  // per hour
-        //       charging_total: number,  // MWh
-        //       discharging_total: number,  // MWh
-        //       state_of_charge: [
-        //         {
-        //           timestamp: string,
-        //           soc_mwh: number
-        //         }
-        //       ],
-        //       cycles: number,
-        //       depth_of_discharge: number  // %
-        //     }
-        //   ],
-        //   total_energy_capacity: number,  // MWh
-        //   total_cycles: number
-        // }
     },
     {
         id: 'links',
         label: 'Links',
         icon: GitBranch,
         color: 'indigo',
+        api: '/pypsa/links',
         description: 'DC transmission & coupling',
-        // API: GET /pypsa/links
-        // Expected Response: {
-        //   success: true,
-        //   links: [
-        //     {
-        //       link_name: string,
-        //       bus0: string,
-        //       bus1: string,
-        //       carrier: string,
-        //       p_nom: number,  // Capacity (MW)
-        //       p_nom_opt: number,  // Optimized capacity (MW)
-        //       length: number,  // km
-        //       efficiency: number,  // %
-        //       capital_cost: number,  // EUR/MW
-        //       p_flow: number,  // Total flow (MWh)
-        //       utilization: number,  // %
-        //       congestion_hours: number,
-        //       reversible: boolean
-        //     }
-        //   ],
-        //   total_capacity: number,  // MW
-        //   avg_utilization: number,  // %
-        //   by_carrier: {
-        //     [carrier: string]: {
-        //       capacity: number,
-        //       flow: number
-        //     }
-        //   }
-        // }
     },
     {
         id: 'lines',
         label: 'Lines',
         icon: Cable,
         color: 'slate',
+        api: '/pypsa/lines',
         description: 'AC transmission & utilization',
-        // API: GET /pypsa/lines
-        // Expected Response: {
-        //   success: true,
-        //   lines: [
-        //     {
-        //       line_name: string,
-        //       bus0: string,
-        //       bus1: string,
-        //       type: string,
-        //       s_nom: number,  // Capacity (MVA)
-        //       s_nom_opt: number,  // Optimized capacity (MVA)
-        //       length: number,  // km
-        //       r: number,  // Resistance (ohm/km)
-        //       x: number,  // Reactance (ohm/km)
-        //       capital_cost: number,  // EUR/MVA
-        //       p_flow: number,  // Active power flow (MWh)
-        //       utilization: number,  // %
-        //       congestion_hours: number,
-        //       losses: number  // MWh
-        //     }
-        //   ],
-        //   total_capacity: number,  // MVA
-        //   total_losses: number,  // MWh
-        //   avg_utilization: number,  // %
-        //   congested_lines: number
-        // }
     },
     {
         id: 'transformers',
         label: 'Transformers',
         icon: Repeat,
         color: 'violet',
+        api: '/pypsa/transformers',
         description: 'Capacity & tap ratios',
-        // API: GET /pypsa/transformers
-        // Expected Response: {
-        //   success: true,
-        //   transformers: [
-        //     {
-        //       transformer_name: string,
-        //       bus0: string,
-        //       bus1: string,
-        //       type: string,
-        //       s_nom: number,  // Capacity (MVA)
-        //       tap_ratio: number,
-        //       phase_shift: number,  // degrees
-        //       capital_cost: number,  // EUR/MVA
-        //       p_flow: number,  // MWh
-        //       utilization: number,  // %
-        //       losses: number  // MWh
-        //     }
-        //   ],
-        //   total_capacity: number,  // MVA
-        //   total_losses: number  // MWh
-        // }
     },
     {
         id: 'global-constraints',
         label: 'Global Constraints',
         icon: ShieldAlert,
         color: 'red',
+        api: '/pypsa/global-constraints',
         description: 'CO₂ limits & shadow prices',
-        // API: GET /pypsa/global-constraints
-        // Expected Response: {
-        //   success: true,
-        //   constraints: [
-        //     {
-        //       constraint_name: string,
-        //       type: string,  // 'CO2Limit', 'primary_energy', etc.
-        //       carrier_attribute: string,
-        //       sense: string,  // '<=', '>=', '=='
-        //       constant: number,
-        //       actual_value: number,
-        //       shadow_price: number,  // EUR/unit
-        //       slack: number,
-        //       binding: boolean
-        //     }
-        //   ],
-        //   co2_limit: number,  // tCO2
-        //   co2_emissions: number,  // tCO2
-        //   co2_shadow_price: number  // EUR/tCO2
-        // }
     },
     {
         id: 'capacity-analysis',
         label: 'Capacity Analysis',
         icon: BarChart3,
         color: 'blue',
+        api: '/pypsa/total-capacities', // Uses existing endpoint
         description: 'Bar charts & pie charts',
-        // API: GET /pypsa/capacity-analysis
-        // This uses existing endpoints:
-        // - /pypsa/total-capacities
-        // - /pypsa/capacity-by-carrier
-        // Plus additional visualizations
     },
     {
         id: 'capacity-factors',
         label: 'Capacity Factors',
         icon: TrendingUp,
         color: 'green',
+        api: '/pypsa/capacity-factors',
         description: 'Utilization by technology',
-        // API: GET /pypsa/capacity-factors
-        // Expected Response: {
-        //   success: true,
-        //   capacity_factors: [
-        //     {
-        //       carrier: string,
-        //       technology: string,
-        //       capacity_factor: number,  // %
-        //       total_capacity: number,  // MW
-        //       actual_generation: number,  // MWh
-        //       potential_generation: number  // MWh
-        //     }
-        //   ],
-        //   by_carrier: {
-        //     [carrier: string]: number  // Average capacity factor
-        //   }
-        // }
     },
     {
         id: 'renewable-share',
         label: 'Renewable Energy',
         icon: Leaf,
         color: 'emerald',
+        api: '/pypsa/renewable-share',
         description: 'Renewable energy share',
-        // API: GET /pypsa/renewable-share
-        // Expected Response: {
-        //   success: true,
-        //   renewable_generation: number,  // MWh
-        //   total_generation: number,  // MWh
-        //   renewable_share: number,  // %
-        //   by_technology: [
-        //     {
-        //       technology: string,
-        //       generation: number,  // MWh
-        //       share: number  // %
-        //     }
-        //   ],
-        //   renewable_carriers: ['wind', 'solar', 'hydro'],
-        //   fossil_carriers: ['gas', 'coal']
-        // }
     },
     {
         id: 'system-costs',
         label: 'System Costs',
         icon: DollarSign,
         color: 'rose',
+        api: '/pypsa/system-costs',
         description: 'CAPEX/OPEX breakdown',
-        // API: GET /pypsa/system-costs
-        // Expected Response: {
-        //   success: true,
-        //   total_cost: number,  // EUR
-        //   capex_total: number,  // EUR
-        //   opex_total: number,  // EUR
-        //   by_component: [
-        //     {
-        //       component_type: string,  // 'Generator', 'Line', 'StorageUnit'
-        //       carrier: string,
-        //       capex: number,  // EUR
-        //       opex: number,  // EUR
-        //       total: number  // EUR
-        //     }
-        //   ],
-        //   levelized_cost: number,  // EUR/MWh
-        //   annual_cost: number  // EUR/year
-        // }
     },
     {
         id: 'emissions-tracking',
         label: 'Emissions Tracking',
         icon: Activity,
         color: 'orange',
+        api: '/pypsa/emissions-tracking',
         description: 'CO₂ emissions & intensity',
-        // API: GET /pypsa/emissions-tracking
-        // Expected Response: {
-        //   success: true,
-        //   total_emissions: number,  // tCO2
-        //   emission_intensity: number,  // tCO2/MWh
-        //   by_carrier: [
-        //     {
-        //       carrier: string,
-        //       emissions: number,  // tCO2
-        //       generation: number,  // MWh
-        //       intensity: number  // tCO2/MWh
-        //     }
-        //   ],
-        //   time_series: [
-        //     {
-        //       timestamp: string,
-        //       emissions_tco2: number
-        //     }
-        //   ]
-        // }
     },
     {
         id: 'reserve-margins',
         label: 'Reserve Margins',
         icon: Gauge,
         color: 'purple',
+        api: '/pypsa/reserve-margins',
         description: 'System reliability metrics',
-        // API: GET /pypsa/reserve-margins
-        // Expected Response: {
-        //   success: true,
-        //   total_capacity: number,  // MW
-        //   peak_demand: number,  // MW
-        //   reserve_margin: number,  // %
-        //   by_carrier: [
-        //     {
-        //       carrier: string,
-        //       capacity: number,  // MW
-        //       margin: number  // %
-        //     }
-        //   ],
-        //   firm_capacity: number,  // MW (dispatchable)
-        //   variable_capacity: number  // MW (VRE)
-        // }
     },
     {
         id: 'dispatch-plots',
         label: 'Dispatch Analysis',
         icon: PieChart,
         color: 'indigo',
+        api: '/pypsa/dispatch-analysis',
         description: 'Stacked generation plots',
-        // API: GET /pypsa/dispatch-analysis
-        // Expected Response: {
-        //   success: true,
-        //   time_series: [
-        //     {
-        //       timestamp: string,
-        //       generation_by_carrier: {
-        //         [carrier: string]: number  // MW
-        //       },
-        //       storage_charge: number,  // MW (negative)
-        //       storage_discharge: number,  // MW (positive)
-        //       load: number  // MW
-        //     }
-        //   ],
-        //   carriers: ['wind', 'solar', 'gas', 'storage'],
-        //   duration_hours: number
-        // }
     }
 ];
 
@@ -576,61 +213,32 @@ const LoadingSpinner = ({ message = "Loading data..." }) => (
 
 const SingleNetworkView = ({ projectPath, selectedScenario, selectedNetwork }) => {
     const [selectedDataCategory, setSelectedDataCategory] = useState('overview');
-    const [categoryData, setCategoryData] = useState(null);
-    const [loadingCategoryData, setLoadingCategoryData] = useState(false);
 
     // Get availability information
     const {
         availability,
         loading: loadingAvailability,
-        error: availabilityError,
-        canShow,
-        canAnalyze
+        error: availabilityError
     } = usePyPSAAvailability(projectPath, selectedScenario, selectedNetwork);
 
-    // Fetch data for existing categories (will be reorganized)
     const params = projectPath && selectedScenario && selectedNetwork ? {
         projectPath,
         scenarioName: selectedScenario,
         networkFile: selectedNetwork
     } : null;
 
-    const { data: capacities, loading: loadingCapacities } = usePyPSAData(
-        '/pypsa/total-capacities',
-        params,
-        canAnalyze('total_capacities') && selectedDataCategory === 'capacity-analysis'
-    );
+    // Find the API endpoint for the currently selected category
+    const selectedApiEndpoint = networkDataCategories.find(c => c.id === selectedDataCategory)?.api;
 
-    const { data: energyMix, loading: loadingEnergyMix } = usePyPSAData(
-        '/pypsa/energy-mix',
+    const { data: categoryData, loading: isLoadingCategory } = usePyPSAData(
+        selectedApiEndpoint,
         params,
-        canAnalyze('energy_mix') && selectedDataCategory === 'capacity-analysis'
-    );
-
-    const { data: utilization, loading: loadingUtilization } = usePyPSAData(
-        '/pypsa/utilization',
-        params,
-        canAnalyze('utilization') && selectedDataCategory === 'capacity-factors'
-    );
-
-    const { data: costs, loading: loadingCosts } = usePyPSAData(
-        '/pypsa/costs',
-        params,
-        canAnalyze('system_costs') && selectedDataCategory === 'system-costs'
-    );
-
-    const { data: emissions, loading: loadingEmissions } = usePyPSAData(
-        '/pypsa/emissions',
-        params,
-        canAnalyze('emissions') && selectedDataCategory === 'emissions-tracking'
+        !!selectedApiEndpoint // Only fetch if an endpoint is defined for the category
     );
 
     // Handle data category selection
     const handleCategorySelect = (categoryId) => {
         setSelectedDataCategory(categoryId);
-        setCategoryData(null);
-        // Here you would fetch data based on the category
-        // For now, we'll handle existing categories with the hooks above
     };
 
     // Loading state
@@ -762,180 +370,27 @@ const SingleNetworkView = ({ projectPath, selectedScenario, selectedNetwork }) =
             {/* Main Content Area */}
             <main className="flex-1 p-6 overflow-y-auto bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
                 <div className="max-w-7xl mx-auto">
-                    {selectedDataCategory === 'overview' && (
-                        <div className="space-y-6">
-                            {/* Network Overview Header */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <div className="flex items-center gap-4 mb-4">
-                                    <div className="p-3 bg-blue-50 rounded-xl">
-                                        <Layers className="w-7 h-7 text-blue-600" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-slate-800">Network Overview</h2>
-                                        <p className="text-sm text-slate-500 mt-1">Key metrics and summary statistics</p>
-                                    </div>
-                                </div>
-                            </div>
+                    {(() => {
+                        const category = networkDataCategories.find(c => c.id === selectedDataCategory);
+                        if (!category) return null;
 
-                            {/* Network Metrics Cards */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <NetworkMetricsCards availability={availability} />
-                            </div>
-                        </div>
-                    )}
-
-                    {selectedDataCategory === 'capacity-analysis' && (
-                        <div className="space-y-6">
-                            {/* Header */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <div className="flex items-center gap-4">
-                                    <div className="p-3 bg-blue-50 rounded-xl">
-                                        <BarChart3 className="w-7 h-7 text-blue-600" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-slate-800">Capacity Analysis</h2>
-                                        <p className="text-sm text-slate-500 mt-1">Installed capacity and generation mix</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Capacity Chart */}
-                            {loadingCapacities ? (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12">
-                                    <LoadingSpinner message="Loading capacity data..." />
-                                </div>
-                            ) : (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                    <h3 className="text-lg font-bold text-slate-800 mb-4">Installed Capacity by Technology</h3>
-                                    <CapacityChart data={capacities} />
-                                </div>
-                            )}
-
-                            {/* Energy Mix Chart */}
-                            {loadingEnergyMix ? (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12">
-                                    <LoadingSpinner message="Loading energy mix data..." />
-                                </div>
-                            ) : (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                    <h3 className="text-lg font-bold text-slate-800 mb-4">Energy Generation Mix</h3>
-                                    <EnergyMixChart data={energyMix} />
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {selectedDataCategory === 'capacity-factors' && (
-                        <div className="space-y-6">
-                            {/* Header */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <div className="flex items-center gap-4">
-                                    <div className="p-3 bg-green-50 rounded-xl">
-                                        <TrendingUp className="w-7 h-7 text-green-600" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-slate-800">Capacity Factors</h2>
-                                        <p className="text-sm text-slate-500 mt-1">Utilization rates by technology</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Utilization Chart */}
-                            {loadingUtilization ? (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12">
-                                    <LoadingSpinner message="Loading utilization data..." />
-                                </div>
-                            ) : (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                    <UtilizationChart data={utilization} />
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {selectedDataCategory === 'system-costs' && (
-                        <div className="space-y-6">
-                            {/* Header */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <div className="flex items-center gap-4">
-                                    <div className="p-3 bg-rose-50 rounded-xl">
-                                        <DollarSign className="w-7 h-7 text-rose-600" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-slate-800">System Costs</h2>
-                                        <p className="text-sm text-slate-500 mt-1">CAPEX and OPEX breakdown</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Cost Chart */}
-                            {loadingCosts ? (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12">
-                                    <LoadingSpinner message="Loading cost data..." />
-                                </div>
-                            ) : (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                    <CostBreakdownChart data={costs} />
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {selectedDataCategory === 'emissions-tracking' && (
-                        <div className="space-y-6">
-                            {/* Header */}
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                <div className="flex items-center gap-4">
-                                    <div className="p-3 bg-orange-50 rounded-xl">
-                                        <Activity className="w-7 h-7 text-orange-600" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-slate-800">Emissions Tracking</h2>
-                                        <p className="text-sm text-slate-500 mt-1">CO₂ emissions and intensity</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Emissions Chart */}
-                            {loadingEmissions ? (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12">
-                                    <LoadingSpinner message="Loading emissions data..." />
-                                </div>
-                            ) : (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                                    <EmissionsChart data={emissions} />
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Placeholder for other categories */}
-                    {!['overview', 'capacity-analysis', 'capacity-factors', 'system-costs', 'emissions-tracking'].includes(selectedDataCategory) && (
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-16">
-                            <div className="text-center max-w-md mx-auto">
-                                <div className="inline-flex p-4 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl mb-4">
-                                    {(() => {
-                                        const category = networkDataCategories.find(c => c.id === selectedDataCategory);
-                                        const Icon = category?.icon || NetworkIcon;
-                                        const colors = colorClasses[category?.color || 'blue'];
-                                        return <Icon className={`w-16 h-16 ${colors.text}`} />;
-                                    })()}
-                                </div>
-                                <h3 className="text-xl font-bold text-slate-800 mb-2">
-                                    {networkDataCategories.find(c => c.id === selectedDataCategory)?.label}
-                                </h3>
-                                <p className="text-slate-500 mb-4">
-                                    {networkDataCategories.find(c => c.id === selectedDataCategory)?.description}
-                                </p>
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
-                                    <p className="text-sm font-semibold text-blue-900 mb-2">Backend API Required</p>
-                                    <p className="text-xs text-blue-700">
-                                        This view requires backend implementation. See the component source code for detailed API specifications and expected response formats.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                        return (
+                            <ChartCard
+                                title={category.label}
+                                description={category.description}
+                                icon={category.icon}
+                                color={category.color}
+                                isLoading={isLoadingCategory}
+                            >
+                                {selectedDataCategory === 'overview' && <NetworkMetricsCards availability={availability} />}
+                                {selectedDataCategory === 'capacity-analysis' && <CapacityChart data={categoryData} />}
+                                {selectedDataCategory === 'capacity-factors' && <UtilizationChart data={categoryData} />}
+                                {selectedDataCategory === 'system-costs' && <CostBreakdownChart data={categoryData} />}
+                                {selectedDataCategory === 'emissions-tracking' && <EmissionsChart data={categoryData} />}
+                                {/* Add other charts here as they are created */}
+                            </ChartCard>
+                        );
+                    })()}
                 </div>
             </main>
         </div>
